@@ -1,192 +1,88 @@
-# Copy Checking System
+# AI-Powered Automated Copy Checking System
 
-OCR-based worksheet grading and dual-camera document capture system.
+An intelligent document grading system that uses dual-camera capture, **GPT-4o Vision** for evaluation, and **PaddleOCR** for precise location-based annotation.
 
-## Setup
+## 🚀 Key Features
 
-### 1. Virtual Environment (Recommended)
+*   **Dual Camera Capture**: Simultaneously captures feeds from two cameras (e.g., student view + worksheet view).
+*   **Automated Document Detection**: Automatically detects document contours, crops, and perspective-corrects the image.
+*   **AI Grading (GPT-4o)**:
+    *   Compresses images efficiently for token optimization (JPEG 95% quality, resized).
+    *   Sends the worksheet to **OpenAI GPT-4o** to identify questions and evaluate answers.
+*   **Visual Annotation**:
+    *   Uses **PaddleOCR** to locate the exact position of questions on the page.
+    *   Marks questions as **Correct (✓)** or **Wrong (✗)** directly on the image based on GPT's evaluation.
+*   **Layout Preservation Mode**: Debugging tool to extract text while preserving the visual layout.
 
-This project uses a virtual environment to isolate dependencies:
+## 🛠️ Prerequisites
+
+*   Python 3.10+
+*   **Tesseract OCR** (Optional, for fallback)
+*   **OpenAI API Key**
+
+## 📦 Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/Creative-banda/AI-Copy-Evaluation-.git
+    cd AI-Copy-Evaluation-
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3.  **Set up Environment Variables:**
+    Create a `.env` file in the root directory:
+    ```env
+    OPENAI_API_KEY=your_openai_api_key_here
+    ```
+
+## 🖥️ Usage
+
+### 1. Auto-Grading Mode (Default)
+Starts the camera system. When a document is stable for 3 seconds, it is captured, processed, sent to GPT, and annotated automatically.
 
 ```bash
-# Already created - just activate it:
-.\venv\Scripts\Activate.ps1   # PowerShell
+python main.py
 # OR
-venv\Scripts\activate.bat      # Command Prompt
+python main.py camera --camera1 0 --camera2 1
 ```
 
-### 2. Install Dependencies
+*   **Output**: Saved in `captured_copies/camera_timestamp/`
+    *   `original_color.png`: The cropped document.
+    *   `gpt_compressed.jpg`: Optimized image sent to AI.
+    *   `original_gray_GRADED.png`: Final annotated image with grades.
 
-Dependencies are already installed, but if you need to reinstall:
+### 2. Text Extraction Mode (Layout Debugging)
+Extracts text from a specific image while attempting to preserve the original visual layout (lines/columns). Useful for testing how the OCR "sees" the document.
 
 ```bash
-pip install -r requirements.txt
+python main.py extract "path/to/image.png"
 ```
 
-## Components
-
-### 1. Tesseract 5 OCR Integration (`python_ocr.py`)
-
-**✨ NOW USING: Tesseract 5 - Industry Standard OCR!**
-
-**Why Tesseract 5?**
-- ✅ **95-98% accuracy** on printed documents (best free OCR)
-- ✅ **Industry standard** - used by Google, Archive.org
-- ✅ **Perfect for worksheets** and educational materials
-- ✅ **LSTM neural network** for superior recognition
-- ✅ **Completely free** and open source
-- ✅ **Fast processing** - optimized C++ engine
-
-**Installation Required:**
-1. Install Tesseract 5 binary: See [INSTALL_TESSERACT.md](INSTALL_TESSERACT.md)
-2. Python packages installed automatically in venv
-
-#### Usage:
+### 3. Manual OCR Testing
+Test PaddleOCR detection on a specific image.
 
 ```bash
-# Using the virtual environment (recommended):
-.\run_ocr.ps1 --evaluate --image test_image.png
+# Find specific text
+python main.py ocr "path/to/image.png" "Question 1"
 
-# Or activate venv manually:
-.\venv\Scripts\Activate.ps1
-python python_ocr.py --evaluate --image test_image.png
+# Extract all text (unstructured)
+python ocr_engine.py "path/to/image.png"
 ```
 
+## 📂 Project Structure
 
-#### Command Line Options:
+*   **`main.py`**: Entry point. Handles CLI arguments and orchestrates the workflow.
+*   **`camera_system.py`**: Manages OpenCV camera feeds, document detection, and image saving.
+*   **`ocr_engine.py`**: Wraps PaddleOCR and GPT-4o logic. Handles text detection and JSON parsing.
+*   **`captured_copies/`**: Stores all capture sessions.
 
-```bash
-# Evaluate and grade a worksheet with OpenAI
-python python_ocr.py --evaluate --image worksheet.png --api-key YOUR_API_KEY
+## ⚙️ Configuration
+*   **Image Optimization**: GPT images are resized to max `2048px` and saved at `95%` JPEG quality.
+*   **OCR Engine**: Defaults to `PaddleOCR` (v2.9.1) for superior accuracy.
 
-# Find specific text in an image
-python python_ocr.py --image document.png --text "Question 1"
-
-# Specify output files
-python python_ocr.py --evaluate --image test.png --out-image graded.png --out-json results.json
-```
-
-### 2. Dual-Camera Capture System (`multiple_camera.py`)
-
-Automatic document detection and high-resolution capture from two cameras.
-
-#### Features:
-- Real-time contour detection using Otsu thresholding + Canny edges
-- Processes at 640px for speed, captures at maximum camera resolution
-- Auto-saves when stable contours detected for 30 frames
-- Independent operation of both cameras
-- Saves high-quality PNG images (lossless)
-
-#### Usage:
-
-```bash
-# Using the virtual environment:
-.\run_camera.ps1
-
-# Or activate venv manually:
-.\venv\Scripts\Activate.ps1
-python multiple_camera.py
-```
-
-#### Controls:
-- `d` - Toggle debug mode (shows detection steps)
-- `+`/`-` - Adjust minimum contour area
-- `]`/`[` - Adjust maximum area ratio
-- `q` or `ESC` - Quit
-
-#### Output Structure:
-```
-captured_copies/
-├── cam1_contour_20260210_143052.png  # Full image with detection box
-├── cam2_contour_20260210_143105.png
-└── cropped/
-    ├── cam1_cropped_20260210_143052.png  # High-res cropped document
-    └── cam2_cropped_20260210_143105.png
-```
-
-## Requirements
-
-- Python 3.10+
-- **Tesseract 5.x** (binary installation required - see [INSTALL_TESSERACT.md](INSTALL_TESSERACT.md))
-- OpenCV
-- pytesseract (Python wrapper)
-- Pillow (PIL)
-- OpenAI API (for grading)
-- NumPy
-
-See `requirements.txt` for complete Python package list.
-
-## Environment Variables
-
-```bash
-# Set your OpenAI API key:
-$env:OPENAI_API_KEY = "your-api-key-here"  # PowerShell
-# OR
-set OPENAI_API_KEY=your-api-key-here       # Command Prompt
-```
-
-## Migration to Tesseract 5
-
-The OCR system now uses **Tesseract 5** for maximum accuracy:
-
-### What Changed:
-- ✅ **95-98% accuracy** (vs 85-92% with EasyOCR)
-- ✅ LSTM neural network for best-in-class recognition
-- ✅ Optimized for printed text (perfect for worksheets)
-- ✅ Faster processing than deep learning alternatives
-- ✅ Lower memory usage
-
-### Installation:
-See **[INSTALL_TESSERACT.md](INSTALL_TESSERACT.md)** for detailed step-by-step instructions.
-
-**Quick Install:**
-1. Download from: https://github.com/UB-Mannheim/tesseract/wiki
-2. Install to default path: `C:\Program Files\Tesseract-OCR`
-3. Run `python test_ocr.py` to verify
-
-### Why Tesseract 5 Over Others?
-
-| Feature | Tesseract 5 | EasyOCR | PaddleOCR |
-|---------|-------------|---------|-----------|
-| **Accuracy (Printed)** | ⭐⭐⭐⭐⭐ 95-98% | ⭐⭐⭐⭐ 85-92% | ⭐⭐⭐⭐⭐ 96%+ |
-| **Speed** | ⚡⚡⚡ Fast | ⚡ Slow | ⚡⚡ Medium |
-| **Memory Usage** | 💚 Low | ❤️ High | 💛 Medium |
-| **Windows Support** | ✅ Excellent | ✅ Good | ❌ Issues |
-| **Setup Difficulty** | 🟢 Easy | 🟢 Easy | 🔴 Complex |
-| **Best For** | Printed docs | Multilingual | Chinese/Scene text |
-
-**Tesseract 5 is the best choice for worksheet grading!**
-
-## Troubleshooting
-
-### Virtual Environment Not Activating
-```bash
-# PowerShell execution policy issue:
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-### PaddleOCR Model Download
-First run downloads models automatically. Ensure internet connection.
-
-### Camera Not Found
-- Check camera indices in `multiple_camera.py`
-- Try different camera IDs (0, 1, 2...)
-
-## Development
-
-To add new dependencies:
-
-```bash
-# Activate venv first
-.\venv\Scripts\Activate.ps1
-
-# Install package
-pip install package-name
-
-# Update requirements.txt
-pip freeze > requirements.txt
-```
-
-## License
-
-[Add your license here]
+---
+**Note**: Ensure your camera IDs (0, 1) are correct if using external webcams.
