@@ -1,0 +1,15 @@
+# Core OCR and Image Processing
+pytesseract
+pillow
+opencv-python
+
+# OpenAI for grading
+openai
+
+# Additional dependencies
+numpy
+python-dotenv
+
+# PaddleOCR dependencies
+paddlepaddle
+paddleocr==2.9.1
