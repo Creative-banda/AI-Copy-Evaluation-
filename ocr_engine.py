@@ -470,21 +470,28 @@ Respond in JSON:
     ...
 }}"""
         else:
-            prompt = """Analyze this worksheet.
-1. Identify all questions and student answers.
-2. Evaluate if the answer is correct.
+            prompt = """
+Analyze the worksheet image.
 
-Respond in JSON format:
+Rules:
+- Copy text EXACTLY from the START of each question.
+- DO NOT summarize, rewrite, or change words.
+- Return ONE continuous line only. MAX 5 words. I want 5 words starting of the question, stop if you get . or ? or :  do not include them
+- Remove '.', '?', ':' if present.
+- Start with first words and extend ONLY until each question text becomes unique.
+- Each question must differ from all others.
+
+Tasks:
+1. Detect questions and student answers.
+2. Evaluate correctness.
+
+Return JSON only:
 {
-  "q1": {
-    "question": "Question text here",
-    "isAnswerCorrect": true
-  },
-  "q2": {
-    "question": "Next question...",
-    "isAnswerCorrect": false
-  }
-}"""
+ "q1":{"question":"...","isAnswerCorrect":true},
+ "q2":{"question":"...","isAnswerCorrect":false}
+}
+"""
+
         
         # Call API
         client = OpenAI(api_key=api_key)

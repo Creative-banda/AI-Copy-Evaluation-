@@ -40,6 +40,7 @@ graded.png
 evaluation.json
 *.jpg
 *.png
+*.jpeg
 !test_image.png
 !ocr-test.png
 images/
