@@ -1,24 +1,26 @@
-# AI-Powered Automated Copy Checking System
+# AI-Powered Automated Copy Checking System with Hardware Integration
 
-An intelligent document grading system that uses dual-camera capture, **GPT-4o Vision** for evaluation, and **PaddleOCR** for precise location-based annotation.
+An intelligent document grading system that uses dual-camera capture, **GPT-4o Vision** for evaluation, **PaddleOCR** for annotation, and **Arduino-based hardware** for automated page flipping.
 
 ## 🚀 Key Features
 
-*   **Dual Camera Capture**: Simultaneously captures feeds from two cameras (e.g., student view + worksheet view).
-*   **Automated Document Detection**: Automatically detects document contours, crops, and perspective-corrects the image.
-*   **AI Grading (GPT-4o)**:
-    *   Compresses images efficiently for token optimization (JPEG 95% quality, resized).
-    *   Sends the worksheet to **OpenAI GPT-4o** to identify questions and evaluate answers.
-*   **Visual Annotation**:
-    *   Uses **PaddleOCR** to locate the exact position of questions on the page.
-    *   Marks questions as **Correct (✓)** or **Wrong (✗)** directly on the image based on GPT's evaluation.
-*   **Layout Preservation Mode**: Debugging tool to extract text while preserving the visual layout.
+*   **Dual Camera Capture**: Simultaneously captures from two cameras (Cam 1 & Cam 2).
+*   **Parallel Processing**: Evaluates both images **simultaneously** using multi-threading for maximum speed.
+*   **Hardware Automation**:
+    *   Communicates with Arduino via Serial (default `COM4`).
+    *   Sends `flip` signal after processing.
+    *   Waits for `capture` signal to continue the loop.
+*   **AI Grading**:
+    *   **GPT-4o Vision**: Identifies questions and evaluates student answers.
+    *   **PaddleOCR**: Locates text and marks "Correct (✓)" or "Wrong (✗)" directly on the image.
+*   **Smart Rotation**: Automatically corrects camera mounting orientation (`Cam1: -90°`, `Cam2: +90°`).
 
 ## 🛠️ Prerequisites
 
 *   Python 3.10+
-*   **Tesseract OCR** (Optional, for fallback)
 *   **OpenAI API Key**
+*   **Arduino** (Connected via USB) with page-flipping firmware.
+*   Two Webcams.
 
 ## 📦 Installation
 
@@ -41,48 +43,55 @@ An intelligent document grading system that uses dual-camera capture, **GPT-4o V
 
 ## 🖥️ Usage
 
-### 1. Auto-Grading Mode (Default)
-Starts the camera system. When a document is stable for 3 seconds, it is captured, processed, sent to GPT, and annotated automatically.
+### 1. Start Automated System (Main Production Mode)
+This is the main script that runs the full **Capture -> Grade -> Flip -> Repeat** loop.
 
 ```bash
-python main.py
-# OR
-python main.py camera --camera1 0 --camera2 1
+python automated_grading.py
+```
+*   **Note**: Ensure Arduino is connected to `COM4`. To change the port, edit `automated_grading.py`.
+
+### 2. Testing Tools
+
+#### Simple GPT Evaluator for Single Image
+Quickly test if GPT can read/grade a specific image.
+```bash
+python simple_gpt_evaluator.py "path/to/image.png"
 ```
 
-*   **Output**: Saved in `captured_copies/camera_timestamp/`
-    *   `original_color.png`: The cropped document.
-    *   `gpt_compressed.jpg`: Optimized image sent to AI.
-    *   `original_gray_GRADED.png`: Final annotated image with grades.
-
-### 2. Text Extraction Mode (Layout Debugging)
-Extracts text from a specific image while attempting to preserve the original visual layout (lines/columns). Useful for testing how the OCR "sees" the document.
-
+#### Batch Process Scanned Images
+Grade a folder of existing images (no cameras/hardware needed).
 ```bash
+python scanner_processor.py "path/to/folder"
+```
+
+#### Manual Camera & OCR Testing
+Use `main.py` for component testing without hardware automation.
+```bash
+# Test Camera Capture only
+python main.py camera
+
+# Test Text Extraction (Layout Debugging)
 python main.py extract "path/to/image.png"
-```
 
-### 3. Manual OCR Testing
-Test PaddleOCR detection on a specific image.
-
-```bash
-# Find specific text
-python main.py ocr "path/to/image.png" "Question 1"
-
-# Extract all text (unstructured)
-python ocr_engine.py "path/to/image.png"
+# Test Preprocessing
+python main.py preprocess "path/to/image.png" --method aggressive --output "debug.png"
 ```
 
 ## 📂 Project Structure
 
-*   **`main.py`**: Entry point. Handles CLI arguments and orchestrates the workflow.
-*   **`camera_system.py`**: Manages OpenCV camera feeds, document detection, and image saving.
-*   **`ocr_engine.py`**: Wraps PaddleOCR and GPT-4o logic. Handles text detection and JSON parsing.
-*   **`captured_copies/`**: Stores all capture sessions.
+*   **`automated_grading.py`**: **MAIN** entry point. Orchestrates cameras, threads, and hardware.
+*   **`hardware_interface.py`**: Handles Serial communication with Arduino (`flip`/`capture`).
+*   **`camera_system.py`**: Handles camera logic, document detection, cropping, and rotation.
+*   **`ocr_engine.py`**: Core grading logic (GPT-4o + PaddleOCR).
+*   **`main.py`**: Legacy/Testing hub for individual components.
 
 ## ⚙️ Configuration
-*   **Image Optimization**: GPT images are resized to max `2048px` and saved at `95%` JPEG quality.
-*   **OCR Engine**: Defaults to `PaddleOCR` (v2.9.1) for superior accuracy.
+*   **Camera Rotation**:
+    *   Cam 1: Rotated -90° (Counter-Clockwise).
+    *   Cam 2: Rotated +90° (Clockwise).
+*   **Serial Port**: Default `COM4`, 9600 baud. Change in `automated_grading.py`.
 
----
-**Note**: Ensure your camera IDs (0, 1) are correct if using external webcams.
+## 📌 Troubleshooting
+*   **"Could not connect to COM4"**: Check USB connection or update `COM_PORT` in `automated_grading.py`.
+*   **"Cameras not initialized"**: Ensure cameras are plugged in and not used by another app.

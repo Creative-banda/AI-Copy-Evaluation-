@@ -431,6 +431,17 @@ class CameraHandler:
         self.stable_frames = 0
         self.last_capture_time = 0
         self.saved_paths = None
+        self.paused = False
+        
+    def pause(self):
+        """Pause detection (e.g., while waiting for other camera or flip)"""
+        self.paused = True
+        
+    def resume(self):
+        """Resume detection"""
+        self.paused = False
+        self.stable_frames = 0
+        self.last_capture_time = time.time()
     
     def process_frame(self, frame: np.ndarray) -> np.ndarray:
         """Process frame and detect stable contours"""
@@ -443,6 +454,11 @@ class CameraHandler:
                                    interpolation=cv2.INTER_AREA)
         
         display_frame = process_frame.copy()
+        
+        # Check if paused
+        if self.paused:
+            self._draw_status(display_frame, "PAUSED (Waiting...)", (0, 165, 255), 0)
+            return display_frame
         
         # Check cooldown
         if current_time - self.last_capture_time < COOLDOWN_SECONDS:
@@ -486,7 +502,8 @@ class CameraHandler:
                 if self.on_capture and saved_paths:
                     self.on_capture({
                         "camera_name": self.camera_name,
-                        "paths": saved_paths
+                        "paths": saved_paths,
+                        "handler": self
                     })
             
             self._draw_status(display_frame, status_text, color, self.stable_frames)
