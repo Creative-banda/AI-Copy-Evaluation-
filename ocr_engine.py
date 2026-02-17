@@ -471,25 +471,83 @@ Respond in JSON:
 }}"""
         else:
             prompt = """
-Analyze the worksheet image.
+You are a STRICT mathematics examiner evaluating a scanned worksheet image.
 
-Rules:
-- Copy text EXACTLY from the START of each question.
-- DO NOT summarize, rewrite, or change words.
-- Return ONE continuous line only. MAX 5 words. I want 5 words starting of the question, stop if you get . or ? or :  do not include them
-- Remove '.', '?', ':' if present.
-- Start with first words and extend ONLY until each question text becomes unique.
-- Each question must differ from all others.
+Your job is to detect questions, read student answers, compute the correct
+mathematical result, and compare them.
 
-Tasks:
-1. Detect questions and student answers.
-2. Evaluate correctness.
+------------------------------------------------
+IMAGE ANALYSIS RULES
+------------------------------------------------
+1. Detect each question and its answer.
+2. Questions are printed text beginning with Q1, Q2, etc.
+3. The answer belongs to the nearest question ABOVE it.
+4. Any text between one question and the next belongs to that question.
+5. Separator lines or spacing do NOT break association.
 
-Return JSON only:
+------------------------------------------------
+QUESTION TEXT RULES
+------------------------------------------------
+- Copy EXACT words from the START of each question.
+- Maximum 5 words.
+- Stop before punctuation (?, :, .).
+- Do NOT rewrite or summarize.
+- Each question label must be unique.
+
+------------------------------------------------
+ANSWER DETECTION RULES
+------------------------------------------------
+For every question:
+- Extract exactly what the student wrote.
+- Preserve math symbols if visible.
+- If multiple lines exist, combine into one line.
+
+------------------------------------------------
+MATH EVALUATION RULES (CRITICAL)
+------------------------------------------------
+You MUST solve the math problem yourself.
+
+DO NOT compare strings directly.
+
+Normalize equivalents:
+×, x, * → multiplication
+½, 1/2 → same value
+Ignore spacing differences.
+
+Procedure:
+1. Understand the math question.
+2. Compute the correct answer.
+3. Compare with detected student answer.
+
+If mathematically equal → true
+Otherwise → false
+
+Example:
+7 × 9 = 63 → correct
+Area = bh/2 → correct form
+2 × (8 + 5) = 26 → correct
+
+Never mark a mathematically correct answer as false.
+
+------------------------------------------------
+OUTPUT FORMAT (STRICT JSON ONLY)
+------------------------------------------------
+Return ONLY valid JSON.
+
+For each question return:
+
 {
- "q1":{"question":"...","isAnswerCorrect":true},
- "q2":{"question":"...","isAnswerCorrect":false}
+ "q1":{
+   "question":"...",
+   "detectedAnswer":"what you read from image",
+   "expectedAnswer":"correct mathematical answer",
+   "isAnswerCorrect":true
+ }
 }
+
+No explanations.
+No markdown.
+No extra text.
 """
 
         
@@ -515,9 +573,11 @@ Return JSON only:
         )
         
         # Parse response
-        # Parse response
         content = response.choices[0].message.content
-        
+
+        print("\n[DEBUG] Raw GPT response content:")
+        print(content)
+
         # Remove markdown code blocks
         if "```" in content:
             content = re.sub(r"```json\s*", "", content, flags=re.IGNORECASE)

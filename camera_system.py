@@ -358,9 +358,14 @@ def crop_and_save(image, contour, camera_name, output_folder, camera_capture=Non
     pts = save_contour.reshape(4, 2)
     cropped_color = four_point_transform(save_image, pts)
     
-    # Rotate -90 degrees (Counter Clockwise) as per user request
-    # This affects ALL downstream versions (Gray, GPT, etc.)
-    cropped_color = cv2.rotate(cropped_color, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    
+    # Rotate based on camera
+    # cam1: -90 degrees (Counter Clockwise)
+    # cam2: +90 degrees (Clockwise)
+    if "cam2" in str(camera_name).lower():
+         cropped_color = cv2.rotate(cropped_color, cv2.ROTATE_90_CLOCKWISE)
+    else:
+         cropped_color = cv2.rotate(cropped_color, cv2.ROTATE_90_COUNTERCLOCKWISE)
     
     cropped_path_color = os.path.join(capture_folder, f"original_color.png")
     cv2.imwrite(cropped_path_color, cropped_color, [cv2.IMWRITE_PNG_COMPRESSION, 0])
