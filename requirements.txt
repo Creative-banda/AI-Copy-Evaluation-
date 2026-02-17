@@ -13,3 +13,6 @@ python-dotenv
 # PaddleOCR dependencies
 paddlepaddle
 paddleocr==2.9.1
+
+# Hardware Communication
+pyserial

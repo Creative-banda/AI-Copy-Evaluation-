@@ -640,6 +640,89 @@ def start_camera_system(
         print("=" * 70)
 
 
+# ============================================================================
+# MODULAR CAMERA FUNCTIONS (For Automated Grading)
+# ============================================================================
+
+def init_cameras(camera1_id: int = 0, camera2_id: int = 1):
+    """Initialize both cameras"""
+    print(f"Initializing cameras...")
+    
+    # Initialize Camera 1
+    cap1 = cv2.VideoCapture(camera1_id, cv2.CAP_DSHOW)
+    cap1.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
+    cap1.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
+    
+    if not cap1.isOpened():
+        print(f"Error: Could not open Camera 1 (ID: {camera1_id})")
+        return None, None
+        
+    # Initialize Camera 2
+    cap2 = cv2.VideoCapture(camera2_id, cv2.CAP_DSHOW)
+    cap2.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
+    cap2.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
+    
+    if not cap2.isOpened():
+        print(f"Error: Could not open Camera 2 (ID: {camera2_id})")
+        cap1.release()
+        return None, None
+        
+    print("✓ Cameras initialized!")
+    return cap1, cap2
+
+def release_cameras(cam1, cam2):
+    """Release camera resources"""
+    if cam1: cam1.release()
+    if cam2: cam2.release()
+    cv2.destroyAllWindows()
+
+def capture_dual_cameras(camera, camera_name: str, output_folder: str) -> Optional[Dict[str, str]]:
+    """
+    Capture a single image from a specific camera, detect document, and save.
+    Returns dictionary of paths if successful, None otherwise.
+    """
+    if not camera or not camera.isOpened():
+        print(f"[{camera_name}] Camera not running!")
+        return None
+        
+    # Capture frame (High Res)
+    ret, frame = camera.read()
+    if not ret:
+        print(f"[{camera_name}] Failed to capture frame")
+        return None
+        
+    # Process for document detection (Low Res)
+    # create a copy for processing
+    process_frame_img = cv2.resize(frame, (PROCESS_WIDTH, int(PROCESS_WIDTH * 9/16)))
+    
+    # Detect contour
+    contour, _ = detect_contour(process_frame_img)
+    
+    if contour is None:
+        print(f"[{camera_name}] No document detected. Saving full frame...")
+        # Fallback: Use entire frame as "document"
+        h, w = process_frame_img.shape[:2]
+        contour = np.array([
+            [0, 0],
+            [w, 0],
+            [w, h],
+            [0, h]
+        ])
+        
+    # Save (Crop & Process)
+    # Note: crop_and_save expects the *processing* image size for scaling logic
+    paths = crop_and_save(
+        image=process_frame_img, 
+        contour=contour, 
+        camera_name=camera_name, 
+        output_folder=output_folder, 
+        camera_capture=None, # Already captured
+        high_res_frame=frame # Pass the high-res frame we already captured
+    )
+    
+    return paths
+        
+
 if __name__ == "__main__":
     print("Camera System Module")
     print("=" * 70)
