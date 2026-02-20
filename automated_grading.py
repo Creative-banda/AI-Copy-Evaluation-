@@ -102,7 +102,14 @@ def run_camera_mode(args):
                 if len(processed_cameras) >= 2:
                     ready_to_flip = True
                     
-            # 3. TRIGGER FLIP (Only the last finishing thread does this)
+            # 3. GENERATE MERGED G-CODE (Only if ready to flip)
+            if ready_to_flip:
+                try:
+                    generate_merged_output(camera_handlers)
+                except Exception as e:
+                     print(f"[System] Merged Gen Error: {e}")
+
+            # 4. TRIGGER FLIP (Only the last finishing thread does this)
             if ready_to_flip:
                 with cycle_lock:
                     print(f"\n[System] All cameras ({processed_cameras}) processed. Syncing...")
@@ -123,9 +130,9 @@ def run_camera_mode(args):
                         
                     # RESET CYCLE AND RESUME CAMERAS
                     print("[System] Resuming cameras...")
-                    for name, handler in camera_handlers.items():
-                        if handler:
-                            handler.resume()
+                    for name, h_data in camera_handlers.items():
+                        if h_data and h_data.get('handler'):
+                            h_data['handler'].resume()
                             
                     with processing_lock:
                         camera_handlers.clear()
@@ -147,7 +154,7 @@ def run_camera_mode(args):
                 return
             
             # Store handler and PAUSE immediately
-            camera_handlers[camera_name] = handler
+            camera_handlers[camera_name] = {'handler': handler, 'data': data, 'annotations': None, 'ocr_path': None}
             if handler:
                 handler.pause()
                 print(f"[{camera_name}] Paused detection.")
@@ -163,7 +170,7 @@ def run_camera_mode(args):
          grade_and_sync(camera_name, data)
 
     def process_single_image_grading(camera_name, data):
-        """Helper to grade a single image"""
+        """Helper to grade a single image and collect annotations"""
         paths = data.get("paths", {})
         gpt_image_path = paths.get("gpt_compressed")
         ocr_image_path = paths.get("cropped_gray")
@@ -195,54 +202,122 @@ def run_camera_mode(args):
                 output_path=output_path
             )
             
-            # --- Handwriting Generation ---
-            if annotations:
-                print(f"[{camera_name}] Generating Handwriting G-Code...")
-                try:
-                    # Get image dimensions for correct scaling
-                    # We can use PIL or cv2 since we have dependencies
-                    # ocr_image_path is loaded in locate_and_annotate but not returned. Let's load just dims.
-                    try:
-                        with Image.open(ocr_image_path) as img_check:
-                            width, height = img_check.size
-                    except:
-                        # Fallback if image load fails
-                        width, height = 3840, 2160 # Default 4K
-
-                    # Fix filename collision: include camera_name and timestamp
-                    # ocr_image_path is like ".../captured_copies/cam1_2024.../original_gray.png"
-                    # We can just append .svg to the full path to keep it in the folder
-                    hw_filename = f"{camera_name}_{os.path.basename(ocr_image_path).replace('.png', '.svg')}"
+            # Annotate
+            output_path = ocr_image_path.replace('.png', '_GRADED.png')
+            graded_path, annotations = locate_and_annotate(
+                image_path=ocr_image_path,
+                gpt_response=evaluation,
+                output_path=output_path
+            )
+            
+            # Store results for merging
+            with processing_lock:
+                if camera_name in camera_handlers:
+                    camera_handlers[camera_name]['annotations'] = annotations
+                    camera_handlers[camera_name]['ocr_path'] = ocr_image_path
                     
-                    # Calculate simple score
-                    correct_count = sum(1 for a in annotations if a['type'] == 'correct')
-                    total_count = len(annotations)
-                    score_text = f"{correct_count}/{total_count}"
-                    
-                    # Generate SVG & G-Code
-                    # Note: generate_svg saves to self.output_dir which defaults to "handwriting_output"
-                    # We might want to save it NEXT TO the image instead.
-                    # But HandwritingSystem is init with output_dir="handwriting_output".
-                    # Let's let it save there but with unique name.
-                    
-                    svg_path = handwriting.generate_svg(
-                        hw_filename, 
-                        annotations, 
-                        score_text,
-                        source_width=width,
-                        source_height=height
-                    )
-                    gcode_path = handwriting.convert_to_gcode(svg_path)
-                    
-                    if gcode_path:
-                         print(f"[{camera_name}] ✓ G-Code ready: {gcode_path}")
-                except Exception as hw_error:
-                    print(f"[{camera_name}] Handwriting Gen Error: {hw_error}")
-            # ------------------------------
             print(f"[{camera_name}] ✓ Grading Complete")
             
         except Exception as e:
             print(f"[{camera_name}] Grading Error: {e}")
+            
+    def generate_merged_output(handlers):
+        """Combine annotations from both cameras and generate SINGLE G-Code and Image (Side-by-Side)"""
+        print("\n[System] Generating MERGED SIDE-BY-SIDE Output...")
+        
+        # Need cam1 and cam2 data
+        if 'cam1' not in handlers or 'cam2' not in handlers:
+            print("[System] Error: Missing camera data for merge.")
+            return
+
+        # Load timestamps to creating unique filename
+        # Use cam1's timestamp/filename as base
+        cam1_path = handlers['cam1'].get('ocr_path')
+        if not cam1_path: return
+        
+        base_name = os.path.basename(cam1_path).replace('cam1_', 'merged_').replace('.png', '')
+        output_dir = "handwriting_output"
+        
+        # 1. Stitch Images (Visual Confirmation)
+        from PIL import Image
+        try:
+            img1 = Image.open(handlers['cam1']['ocr_path'].replace('.png', '_GRADED.png'))
+            img2 = Image.open(handlers['cam2']['ocr_path'].replace('.png', '_GRADED.png'))
+            
+            # Assuming side-by-side: Cam1 Left, Cam2 Right
+            # Resize logical canvas: 2 * width
+            total_width = img1.width + img2.width
+            max_height = max(img1.height, img2.height)
+            
+            merged_img = Image.new('RGB', (total_width, max_height))
+            merged_img.paste(img1, (0, 0))
+            merged_img.paste(img2, (img1.width, 0))
+            
+            merged_img_path = os.path.join("captured_copies", f"{base_name}_stitched.png")
+            merged_img.save(merged_img_path)
+            print(f"[System] ✓ Stitched Image: {merged_img_path}")
+            
+        except Exception as e:
+            print(f"[System] Image Stitch Error: {e}")
+            total_width = 3840 * 2 # Fallback
+            max_height = 2160
+
+        # 2. Merge Annotations
+        # Cam1 annotations are at (x, y)
+        # Cam2 annotations are at (x + cam1.width, y)
+        merged_annotations = []
+        
+        # Cam 1
+        anns1 = handlers['cam1'].get('annotations')
+        if anns1:
+            merged_annotations.extend(anns1)
+            
+        # Cam 2
+        anns2 = handlers['cam2'].get('annotations')
+        if anns2:
+            # Shift x coordinates
+            offset_x = img1.width if 'img1' in locals() else 3840
+            for ann in anns2:
+                new_ann = ann.copy()
+                new_ann['x'] += offset_x
+                merged_annotations.append(new_ann)
+                
+        # 3. Generate Single SVG & G-Code
+        if merged_annotations:
+            try:
+                # Calculate scores
+                c1 = sum(1 for a in anns1) if anns1 else 0
+                c2 = sum(1 for a in anns2) if anns2 else 0
+                
+                svg_name = f"{base_name}.svg"
+                
+                # Canvas size: Double Width (e.g. 210mm * 2 = 420mm)
+                # Image pixels: 7680 x 2160 (if 4K)
+                # Target Physical: 420mm x 297mm (2x A4 Landscape Side-by-Side)
+                
+                # generate_svg creates viewBox based on source_width
+                svg_path = handwriting.generate_svg(
+                    svg_name,
+                    merged_annotations,
+                    feedback_text="", # Skip text for now
+                    source_width=total_width,
+                    source_height=max_height
+                )
+                
+                # Convert to G-code targeting 420mm x 297mm
+                # This aligns with USER REQUEST: "Height same (A4), Width become 2A4 sheet width"
+                gcode_path = handwriting.convert_to_gcode(
+                    svg_path,
+                    target_width_mm=420, # 210 * 2
+                    target_height_mm=297 # A4 Height
+                )
+                
+                if gcode_path:
+                    print(f"[System] ✓ MERGED G-Code (420x297mm): {gcode_path}")
+                    
+            except Exception as e:
+                print(f"[System] G-Code Gen Error: {e}")
+
 
     try:
         start_camera_system(

@@ -102,56 +102,33 @@ class HandwritingSystem:
         dwg.save()
         return filepath
 
-    def convert_to_gcode(self, svg_path: str) -> Optional[str]:
+    def convert_to_gcode(self, svg_path: str, target_width_mm: int = 210, target_height_mm: int = 297) -> Optional[str]:
         """
         Converts SVG to G-Code using vpype.
         Returns the path to the generated gcode file.
+        target_width_mm, target_height_mm: Physical dimensions to scale the SVG to.
         """
         gcode_path = svg_path.replace('.svg', '.gcode')
         try:
             # 1. vpype read svg
-            # 2. scale to match A4 width (210mm)
-            # 3. layout to top-left (0,0) of A4 page
-            # 4. linemerge
-            # 5. gwrite
+            # 2. scale to match target dimensions
+            # 3. linemerge
+            # 4. gwrite
             
-            # Calculate scale factor: 210mm / current_width_in_px
-            # But vpype reads "px" as 1/96 inch by default. 
-            # We want: Image Width (px) -> 210mm.
-            # VPype 'scaleto' fits bounding box. 'scale' takes factor.
-            # Let's try 'scaleto' with 'preserve aspect' to fit PAGE WIDTH.
-            # Better: use 'scale' with explicit factor if we knew it.
-            # Easier: Use 'scaleto' on the *Layer*? 
-            # Best for this: 'layout' the SVG onto the A4 page at 0,0 with scaling.
-            # Command: read svg -> layout -h left -v top --scale 210mmx297mm a4 -> ...
-            # Wait, 'layout' aligns content.
-            # Let's use 'scaleto' but force it to match width: "scaleto 210mm 297mm" fits inside.
-            # If image matches A4 Aspect Ratio, it's fine. If not, it fits inside.
-            # Our image (2160x3840) is 0.56 AR. A4 is 0.70 AR.
-            # So image is taller/thinner. 'scaleto 210mm 297mm' will fit HEIGHT (297mm) and Width will be < 210mm.
-            # This is correct behavior to fit on page.
-            # THE ISSUE WAS: 'scaleto' fits the *bounding box of content*.
-            # If I only have 1 tick, it makes that tick HUGE.
-            # FIX: We need to scale the *entire coordinate system* of the SVG.
-            # Since we set viewbox=image_size, vpype *should* respect that?
-            # Vpype ignores viewbox for scaling usually, it looks at geometries.
-            # FORCE: 'read --no-crop' (if available)? No.
-            # TRICK: Add a transparent rectangle at 0,0 and W,H to force bounding box?
-            # BETTER: Explicit scale factor.
-            # Factor = 210mm / Width_px?
-            # No, let's just use 'scale' command.
-            # We assume width fits 210mm.
+            # Using 'scaleto' with target dimensions + explicit layout alignment
+            dim_str_w = f"{target_width_mm}mm"
+            dim_str_h = f"{target_height_mm}mm"
+            layout_dim = f"{target_width_mm}mmx{target_height_mm}"
             
             cmd = [
                 "vpype",
                 "read", svg_path,
-                "scaleto", "210mm", "297mm", # This is still safer to fit page
-                "layout", "a4", # Center on A4? No we want top-left.
-                # Let's try: scale to 210mm width explicitly?
-                # "scale", ... hard to calculate here without knowing unit context.
-                # Backtrack: The USER said G-Code was huge.
-                # Reason: 'scaleto' fitted the TICKS to 210x297.
-                # Fix: Add invisible bounding box points in SVG!
+                # Fit into target physical size
+                "scaleto", dim_str_w, dim_str_h, 
+                # CRITICAL: Align to Top-Left of the "Page", 
+                # ensuring (0,0) in SVG matches (0,0) in G-Code.
+                # Without this, "scaleto" might center content, shifting X right.
+                "layout", "--halign", "left", "--valign", "top", layout_dim,
                 "linemerge",
                 "gwrite",
                 "--profile", "gcodemm",
