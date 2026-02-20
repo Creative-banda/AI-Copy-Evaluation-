@@ -663,7 +663,7 @@ def locate_and_annotate(
     image_path: str,
     gpt_response: Dict[str, Any],
     output_path: Optional[str] = None
-) -> str:
+) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Locate questions using OCR and annotate with Correct/Wrong based on GPT result.
     
@@ -673,7 +673,7 @@ def locate_and_annotate(
         output_path: Path to save annotated image
         
     Returns:
-        Path to saved image
+        Tuple[str, List[Dict]]: Path to saved image, List of annotation data [{'type': 'correct'|'wrong', 'x': int, 'y': int}]
     """
     if output_path is None:
         output_path = image_path.replace('.', '_graded.')
@@ -683,6 +683,8 @@ def locate_and_annotate(
         raise ValueError(f"Cannot load image: {image_path}")
     
     print("\nAnnotating image based on GPT results...")
+    
+    annotations = []
     
     for key, item in gpt_response.items():
         question_text = item.get("question", "")
@@ -705,7 +707,9 @@ def locate_and_annotate(
             # Choose color
             color = (0, 255, 0) if is_correct else (0, 0, 255) # Green / Red
             label = "Correct" if is_correct else "Wrong"
-            icon = "✓" if is_correct else "✗"
+            # ERROR FIX: OpenCV FONT_HERSHEY_SIMPLEX doesn't support unicode icons like ✓/✗
+            # Replacing with ASCII characters
+            icon = "[/]" if is_correct else "[X]"
             
             # Draw box around question (optional, maybe just next to it)
             # cv2.rectangle(img, (box.left, box.top), (box.right, box.bottom), color, 2)
@@ -734,12 +738,41 @@ def locate_and_annotate(
                 color,
                 2
             )
+
+            # Collect annotation for handwriting system
+            annotations.append({
+                "type": "correct" if is_correct else "wrong",
+                "x": int(text_x), # Store as standard Python int
+                "y": int(text_y)
+            })
         else:
             print(f"    Could not locate text: {search_query}")
             
+    # --- ADD SCORE TO IMAGE ---
+    if annotations:
+        correct_count = sum(1 for a in annotations if a['type'] == 'correct')
+        total_count = len(annotations)
+        score_str = f"Score: {correct_count}/{total_count}"
+        
+        # Draw Score at top right
+        # Background
+        (sw, sh), _ = cv2.getTextSize(score_str, cv2.FONT_HERSHEY_SIMPLEX, 2.0, 4)
+        cv2.rectangle(img, (img.shape[1] - sw - 40, 20), (img.shape[1] - 20, 20 + sh + 20), (255, 255, 255), -1)
+        # Text
+        cv2.putText(
+            img,
+            score_str,
+            (img.shape[1] - sw - 30, 20 + sh + 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2.0,
+            (255, 0, 0), # Blue
+            4
+        )
+    # --------------------------
+
     cv2.imwrite(output_path, img)
     print(f"✓ Graded image saved: {output_path}")
-    return output_path
+    return output_path, annotations
 
 
 def extract_text_with_layout(image_path: str, preprocess: bool = True) -> str:

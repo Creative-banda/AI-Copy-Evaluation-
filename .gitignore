@@ -44,6 +44,9 @@ evaluation.json
 !test_image.png
 !ocr-test.png
 images/
+handwriting_output/
+*.svg
+*.gcode
 
 # IDE
 .vscode/

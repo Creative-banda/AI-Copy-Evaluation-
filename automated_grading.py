@@ -39,6 +39,8 @@ try:
         extract_text_with_layout,
         WordBox
     )
+    # NEW: Import Handwriting System
+    from handwriting_system import handwriting
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError as e:
@@ -71,10 +73,11 @@ def run_camera_mode(args):
     # Initialize Arduino
     try:
         from hardware_interface import ArduinoController
-        arduino = ArduinoController(port="COM4", baud_rate=115200)
+        arduino = ArduinoController(port="COM3", baud_rate=115200) # Updated to COM3
     except Exception as e:
-        print(f"[System] FATAL: Hardware connection failed: {e}")
-        return 1
+        print(f"[System] WARNING: Hardware connection failed: {e}")
+        print("[System] Running in SIMULATION MODE (No Hardware)")
+        arduino = None
 
     # Shared state for synchronization
     processing_lock = threading.Lock()
@@ -105,15 +108,18 @@ def run_camera_mode(args):
                     print(f"\n[System] All cameras ({processed_cameras}) processed. Syncing...")
                     
                     # Send Flip
-                    print("[System] Sending FLIP signal...")
-                    arduino.send_flip_signal()
+                    print("[System] Sending FLIP signal... (SKIPPED FOR TESTING)")
+                    # if arduino: arduino.send_flip_signal()
                     
                     # Wait for Hardware
-                    print("[System] Waiting for hardware...")
-                    if not arduino.wait_for_capture_signal():
-                        print("[System] WARNING: Hardware timeout.")
-                    else:
-                        print("[System] Hardware ready.")
+                    print("[System] Waiting for hardware... (SKIPPED FOR TESTING)")
+                    import time
+                    time.sleep(2) # Simulate flip delay
+                    
+                    # if arduino and not arduino.wait_for_capture_signal():
+                    #     print("[System] WARNING: Hardware timeout.")
+                    # else:
+                    #     print("[System] Hardware ready.")
                         
                     # RESET CYCLE AND RESUME CAMERAS
                     print("[System] Resuming cameras...")
@@ -181,12 +187,58 @@ def run_camera_mode(args):
             )
             
             # Annotate
+            # Annotate
             output_path = ocr_image_path.replace('.png', '_GRADED.png')
-            locate_and_annotate(
+            graded_path, annotations = locate_and_annotate(
                 image_path=ocr_image_path,
                 gpt_response=evaluation,
                 output_path=output_path
             )
+            
+            # --- Handwriting Generation ---
+            if annotations:
+                print(f"[{camera_name}] Generating Handwriting G-Code...")
+                try:
+                    # Get image dimensions for correct scaling
+                    # We can use PIL or cv2 since we have dependencies
+                    # ocr_image_path is loaded in locate_and_annotate but not returned. Let's load just dims.
+                    try:
+                        with Image.open(ocr_image_path) as img_check:
+                            width, height = img_check.size
+                    except:
+                        # Fallback if image load fails
+                        width, height = 3840, 2160 # Default 4K
+
+                    # Fix filename collision: include camera_name and timestamp
+                    # ocr_image_path is like ".../captured_copies/cam1_2024.../original_gray.png"
+                    # We can just append .svg to the full path to keep it in the folder
+                    hw_filename = f"{camera_name}_{os.path.basename(ocr_image_path).replace('.png', '.svg')}"
+                    
+                    # Calculate simple score
+                    correct_count = sum(1 for a in annotations if a['type'] == 'correct')
+                    total_count = len(annotations)
+                    score_text = f"{correct_count}/{total_count}"
+                    
+                    # Generate SVG & G-Code
+                    # Note: generate_svg saves to self.output_dir which defaults to "handwriting_output"
+                    # We might want to save it NEXT TO the image instead.
+                    # But HandwritingSystem is init with output_dir="handwriting_output".
+                    # Let's let it save there but with unique name.
+                    
+                    svg_path = handwriting.generate_svg(
+                        hw_filename, 
+                        annotations, 
+                        score_text,
+                        source_width=width,
+                        source_height=height
+                    )
+                    gcode_path = handwriting.convert_to_gcode(svg_path)
+                    
+                    if gcode_path:
+                         print(f"[{camera_name}] ✓ G-Code ready: {gcode_path}")
+                except Exception as hw_error:
+                    print(f"[{camera_name}] Handwriting Gen Error: {hw_error}")
+            # ------------------------------
             print(f"[{camera_name}] ✓ Grading Complete")
             
         except Exception as e:
@@ -200,7 +252,7 @@ def run_camera_mode(args):
             on_capture=on_capture_callback
         )
     finally:
-        arduino.close()
+        if arduino: arduino.close()
 
 
 # ============================================================================
