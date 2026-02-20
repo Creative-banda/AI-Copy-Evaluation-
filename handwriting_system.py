@@ -72,9 +72,12 @@ class HandwritingSystem:
         dwg = svgwrite.Drawing(filepath, profile='tiny')
         dwg.viewbox(0, 0, source_width, source_height)
         
-        # INVISIBLE BOUNDING BOX 
-        # (Forces vpype to see the full document size, preventing 'scaleto' from expanding small ticks)
-        dwg.add(dwg.rect(insert=(0, 0), size=(source_width, source_height), fill="none", stroke="none"))
+        # ANCHOR RECT: A rectangle drawn with stroke-width=0.01 (nearly invisible)
+        # This forces vpype to recognize the FULL document bounding box.
+        # Without this, vpype only sees the small ticks and centers them on the page.
+        # 0.01 width means it will barely make a mark (1/100 of a pen width) but
+        # the bounding box will be respected.
+        dwg.add(dwg.rect(insert=(0, 0), size=(source_width, source_height), fill="none", stroke="black", stroke_width=0.01))
         
         # Draw Annotations
         for ann in annotations:
@@ -118,17 +121,16 @@ class HandwritingSystem:
             # Using 'scaleto' with target dimensions + explicit layout alignment
             dim_str_w = f"{target_width_mm}mm"
             dim_str_h = f"{target_height_mm}mm"
-            layout_dim = f"{target_width_mm}mmx{target_height_mm}"
+            layout_dim = f"{target_width_mm}mmx{target_height_mm}mm"
             
             cmd = [
                 "vpype",
                 "read", svg_path,
-                # Fit into target physical size
-                "scaleto", dim_str_w, dim_str_h, 
-                # CRITICAL: Align to Top-Left of the "Page", 
-                # ensuring (0,0) in SVG matches (0,0) in G-Code.
-                # Without this, "scaleto" might center content, shifting X right.
-                "layout", "--halign", "left", "--valign", "top", layout_dim,
+                # Fit the content into the target physical size
+                "scaleto", dim_str_w, dim_str_h,
+                # Align to Top-Left. Now that vpype sees the full bounding box
+                # (via the anchor rect), this places it exactly at (0,0)
+                "layout", "--align", "left", "--valign", "top", f"{target_width_mm}mmx{target_height_mm}mm",
                 "linemerge",
                 "gwrite",
                 "--profile", "gcodemm",
@@ -136,6 +138,10 @@ class HandwritingSystem:
             ]
             
             subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            # Post-process: normalize coordinates so content starts at (0,0)
+            self._normalize_gcode(gcode_path)
+            
             print(f"[Handwriting] Generated G-Code: {gcode_path}")
             return gcode_path
         except subprocess.CalledProcessError as e:
@@ -143,6 +149,58 @@ class HandwritingSystem:
             if e.stderr:
                 print(f"[Handwriting] vpype stderr: {e.stderr.decode()}")
             return None
+
+    def _normalize_gcode(self, gcode_path: str):
+        """
+        Post-processes a G-code file to shift all coordinates so the
+        minimum X and minimum Y both start at 0.0.
+        This ensures the machine always starts at the origin (0, 0).
+        """
+        import re
+        coord_pattern = re.compile(r'([XY])(-?[\d.]+)')
+        
+        lines = []
+        min_x = float('inf')
+        min_y = float('inf')
+        
+        # First pass: collect all lines and find min X, Y
+        with open(gcode_path, 'r') as f:
+            lines = f.readlines()
+        
+        for line in lines:
+            if line.startswith('G0') or line.startswith('G1'):
+                for axis, val in coord_pattern.findall(line):
+                    v = float(val)
+                    if axis == 'X' and v < min_x:
+                        min_x = v
+                    if axis == 'Y' and v < min_y:
+                        min_y = v
+        
+        if min_x == float('inf') or min_y == float('inf'):
+            return  # Nothing to normalize
+        
+        # Only shift if there's a meaningful offset
+        offset_x = min_x
+        offset_y = min_y
+        
+        # Second pass: rewrite coordinates with offsets subtracted
+        def shift_coord(match):
+            axis = match.group(1)
+            val = float(match.group(2))
+            if axis == 'X':
+                return f'X{val - offset_x:.4f}'
+            elif axis == 'Y':
+                return f'Y{val - offset_y:.4f}'
+            return match.group(0)
+        
+        normalized_lines = []
+        for line in lines:
+            if line.startswith('G0') or line.startswith('G1'):
+                line = coord_pattern.sub(shift_coord, line)
+            normalized_lines.append(line)
+        
+        with open(gcode_path, 'w') as f:
+            f.writelines(normalized_lines)
 
 # Singleton or utility usage
 handwriting = HandwritingSystem()
