@@ -16,3 +16,7 @@ paddleocr==2.9.1
 
 # Hardware Communication
 pyserial
+
+# Handwriting Machine (G-Code Generation)
+svgwrite
+vpype

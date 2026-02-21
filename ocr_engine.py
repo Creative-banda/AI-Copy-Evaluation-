@@ -686,6 +686,48 @@ def locate_and_annotate(
     
     annotations = []
     
+    # --- RUN OCR ONCE FOR THE ENTIRE PAGE ---
+    # PaddleOCR already scans the whole image in one pass.
+    # We run it once here and reuse the results for all question lookups,
+    # instead of re-running OCR 9 times (once per question).
+    print("  [OCR] Scanning entire page once...")
+    preprocessed = preprocess_image(image_path, method="light")
+    temp_path = image_path.replace('.', '_paddle_temp.')
+    cv2.imwrite(temp_path, preprocessed)
+    
+    page_boxes: List[WordBox] = []
+    ocr_scan_ok = False
+    
+    try:
+        engine = _get_paddle_engine()
+        all_ocr_results = engine.detect(temp_path) or []
+        
+        for detection in all_ocr_results:
+            coords, (text, confidence) = detection
+            if confidence < 0.6:
+                continue
+            points = np.array(coords, dtype=np.int32)
+            x_min = int(np.min(points[:, 0]))
+            y_min = int(np.min(points[:, 1]))
+            x_max = int(np.max(points[:, 0]))
+            y_max = int(np.max(points[:, 1]))
+            page_boxes.append(WordBox(
+                text=text,
+                left=x_min, top=y_min,
+                width=x_max - x_min, height=y_max - y_min,
+                confidence=confidence
+            ))
+        ocr_scan_ok = True
+        print(f"  [OCR] Found {len(page_boxes)} text boxes on page.")
+    except Exception as ocr_err:
+        print(f"  [OCR] Single-pass scan failed ({ocr_err}). Will fall back to per-question mode.")
+    finally:
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+    # -----------------------------------------
+    
     for key, item in gpt_response.items():
         question_text = item.get("question", "")
         is_correct = item.get("isAnswerCorrect", False)
@@ -695,10 +737,14 @@ def locate_and_annotate(
             
         print(f"  Locating: '{question_text[:30]}...' -> {'Correct' if is_correct else 'Wrong'}")
         
-        # Use PaddleOCR to find the question text location
-        # We search for the first few words to be more robust
-        search_query = " ".join(question_text.split()[:5])
-        boxes = find_text_with_paddle(image_path, search_query, preprocess=True, min_confidence=0.6)
+        # Search cached OCR results (no re-scan)
+        # If the single-pass scan failed, fall back to per-question OCR (old behavior)
+        search_query = " ".join(question_text.split()[:5]).lower().strip()
+        if ocr_scan_ok:
+            boxes = [b for b in page_boxes if search_query in b.text.lower()]
+        else:
+            # FALLBACK: independent OCR per question (same as old behavior)
+            boxes = find_text_with_paddle(image_path, search_query, preprocess=True, min_confidence=0.6)
         
         if boxes:
             # Use the first match

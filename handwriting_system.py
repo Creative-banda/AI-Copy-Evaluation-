@@ -72,12 +72,14 @@ class HandwritingSystem:
         dwg = svgwrite.Drawing(filepath, profile='tiny')
         dwg.viewbox(0, 0, source_width, source_height)
         
-        # ANCHOR RECT: A rectangle drawn with stroke-width=0.01 (nearly invisible)
-        # This forces vpype to recognize the FULL document bounding box.
-        # Without this, vpype only sees the small ticks and centers them on the page.
-        # 0.01 width means it will barely make a mark (1/100 of a pen width) but
-        # the bounding box will be respected.
-        dwg.add(dwg.rect(insert=(0, 0), size=(source_width, source_height), fill="none", stroke="black", stroke_width=0.01))
+        # ANCHOR CORNER POINTS: Two tiny 1px lines at opposite corners.
+        # This forces vpype to see the FULL bounding box for correct scaling.
+        # Unlike a full rectangle, these produce nearly zero machine movement
+        # when drawn (pen travels <0.1mm). Much safer than a large rect.
+        dot = 1  # 1px - scales to ~0.05mm on page, machine won't even register it
+        dwg.add(dwg.line((0, 0), (dot, dot), stroke="black", stroke_width=dot))
+        dwg.add(dwg.line((source_width - dot, source_height - dot),
+                         (source_width, source_height), stroke="black", stroke_width=dot))
         
         # Draw Annotations
         for ann in annotations:
@@ -152,23 +154,46 @@ class HandwritingSystem:
 
     def _normalize_gcode(self, gcode_path: str):
         """
-        Post-processes a G-code file to shift all coordinates so the
-        minimum X and minimum Y both start at 0.0.
-        This ensures the machine always starts at the origin (0, 0).
+        Post-processes a G-code file to:
+        1. STRIP the first connected path (anchor rect/dots - not real marks)
+        2. Shift all coordinates so content starts at (0, 0)
         """
         import re
         coord_pattern = re.compile(r'([XY])(-?[\d.]+)')
         
-        lines = []
-        min_x = float('inf')
-        min_y = float('inf')
-        
-        # First pass: collect all lines and find min X, Y
         with open(gcode_path, 'r') as f:
             lines = f.readlines()
         
-        for line in lines:
-            if line.startswith('G0') or line.startswith('G1'):
+        # --- Step 1: Strip the first connected path (anchor geometry) ---
+        # vpype always outputs the anchor (corner dots/rect) as the FIRST path.
+        # A path starts with G00 (rapid move) and ends just before the next G00.
+        # We skip from the first G00 to just before the second G00.
+        first_g00_idx = None
+        second_g00_idx = None
+        
+        for i, line in enumerate(lines):
+            stripped = line.strip().upper()
+            if stripped.startswith('G00') or stripped.startswith('G0 '):
+                if first_g00_idx is None:
+                    first_g00_idx = i
+                elif second_g00_idx is None:
+                    second_g00_idx = i
+                    break
+        
+        # Build line list without the anchor path
+        filtered_lines = []
+        for i, line in enumerate(lines):
+            if first_g00_idx is not None and second_g00_idx is not None:
+                if first_g00_idx <= i < second_g00_idx:
+                    continue  # Skip the anchor path
+            filtered_lines.append(line)
+        
+        # --- Step 2: Normalize coordinates to (0, 0) origin ---
+        min_x = float('inf')
+        min_y = float('inf')
+        
+        for line in filtered_lines:
+            if line.strip().upper().startswith('G0') or line.strip().upper().startswith('G1'):
                 for axis, val in coord_pattern.findall(line):
                     v = float(val)
                     if axis == 'X' and v < min_x:
@@ -177,13 +202,14 @@ class HandwritingSystem:
                         min_y = v
         
         if min_x == float('inf') or min_y == float('inf'):
-            return  # Nothing to normalize
+            # No moves found - just write what we have
+            with open(gcode_path, 'w') as f:
+                f.writelines(filtered_lines)
+            return
         
-        # Only shift if there's a meaningful offset
         offset_x = min_x
         offset_y = min_y
         
-        # Second pass: rewrite coordinates with offsets subtracted
         def shift_coord(match):
             axis = match.group(1)
             val = float(match.group(2))
@@ -194,8 +220,8 @@ class HandwritingSystem:
             return match.group(0)
         
         normalized_lines = []
-        for line in lines:
-            if line.startswith('G0') or line.startswith('G1'):
+        for line in filtered_lines:
+            if line.strip().upper().startswith('G0') or line.strip().upper().startswith('G1'):
                 line = coord_pattern.sub(shift_coord, line)
             normalized_lines.append(line)
         
