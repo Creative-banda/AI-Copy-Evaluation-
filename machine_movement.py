@@ -80,6 +80,8 @@ def main():
     # --- Step 2: Return to Machine Zero ---
     # Moves the machine back to the absolute (0,0) before starting.
     # Note: (0,0) is wherever the machine was powered on, unless you previously sent G92 X0 Y0.
+    # IMPORTANT: Your machine's physical (0, 0) should be placed at the
+    # BOTTOM-LEFT corner of the left-most paper, not the top-left!
     print("\n[2] Returning to physical absolute Origin (G00 X0 Y0)...")
     send_and_wait(s, "G90") # Absolute positioning
     send_and_wait(s, "G00 X0 Y0") # Move to origin
