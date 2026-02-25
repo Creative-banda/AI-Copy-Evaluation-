@@ -10,7 +10,7 @@ import os
 # 4. Return to Origin when done
 # ============================================================
 
-PORT = "COM6"
+PORT = "COM7"
 BAUD = 115200
 FEED_RATE = 1000  # mm/min - adjust to your machine speed
 

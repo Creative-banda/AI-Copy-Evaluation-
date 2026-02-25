@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "Copy_Checking",
+			"path": "."
+		},
+		{
+			"name": "grbl-servo-master",
+			"path": "../../../../assets/grbl-servo-master"
+		}
+	],
+	"settings": {}
+}

@@ -220,10 +220,12 @@ class HandwritingSystem:
                 return f'Y{new_val:.4f}'
             return match.group(0)
         
-        # --- Step 3 & 4: Inject Z commands and apply scaling/offsets ---
-        # Configure your machine's Z-axis UP and DOWN commands here:
-        PEN_UP = "G00 Z5.0000"
-        PEN_DOWN = "G01 Z0.0000"
+        # grbl-servo firmware (grbl-servo-master):
+        # M03 Sxxx  -> Rotate servo (S = 0 to 255, maps to 0-180 degrees)
+        # M05       -> Return servo to 0 degrees
+        # Tune PEN_DOWN S-value: try S30, S50, S90 until pen just touches paper
+        PEN_UP = "M5"        # Return to 0 degrees (resting / pen up position)
+        PEN_DOWN = "M3 S30"  # ~21 degrees - TUNE THIS (valid range: 0-255)
         
         normalized_lines = []
         is_pen_down = False
