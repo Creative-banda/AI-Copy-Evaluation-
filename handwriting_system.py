@@ -107,11 +107,13 @@ class HandwritingSystem:
         dwg.save()
         return filepath
 
-    def convert_to_gcode(self, svg_path: str, target_width_mm: int = 210, target_height_mm: int = 297) -> Optional[str]:
+    def convert_to_gcode(self, svg_path: str, target_width_mm: int = 210, target_height_mm: int = 297, scale_divider: float = 3.0) -> Optional[str]:
         """
         Converts SVG to G-Code using vpype.
         Returns the path to the generated gcode file.
         target_width_mm, target_height_mm: Physical dimensions to scale the SVG to.
+        scale_divider: Divides all final coordinates by this number to compensate
+                       for machine step calibration errors during prototyping.
         """
         gcode_path = svg_path.replace('.svg', '.gcode')
         try:
@@ -141,8 +143,8 @@ class HandwritingSystem:
             
             subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
-            # Post-process: normalize coordinates so content starts at (0,0)
-            self._normalize_gcode(gcode_path)
+            # Post-process: normalize coordinates so content starts at (0,0) and applying scaling
+            self._normalize_gcode(gcode_path, scale_divider)
             
             print(f"[Handwriting] Generated G-Code: {gcode_path}")
             return gcode_path
@@ -152,11 +154,13 @@ class HandwritingSystem:
                 print(f"[Handwriting] vpype stderr: {e.stderr.decode()}")
             return None
 
-    def _normalize_gcode(self, gcode_path: str):
+    def _normalize_gcode(self, gcode_path: str, scale_divider: float = 3.0):
         """
         Post-processes a G-code file to:
         1. STRIP the first connected path (anchor rect/dots - not real marks)
         2. Shift all coordinates so content starts at (0, 0)
+        3. Scales the output by dividing by `scale_divider` to fix machine step errors.
+        4. Injects Z-axis Pen Up / Pen Down commands between rapid and feed moves.
         """
         import re
         coord_pattern = re.compile(r'([XY])(-?[\d.]+)')
@@ -165,9 +169,6 @@ class HandwritingSystem:
             lines = f.readlines()
         
         # --- Step 1: Strip the first connected path (anchor geometry) ---
-        # vpype always outputs the anchor (corner dots/rect) as the FIRST path.
-        # A path starts with G00 (rapid move) and ends just before the next G00.
-        # We skip from the first G00 to just before the second G00.
         first_g00_idx = None
         second_g00_idx = None
         
@@ -180,12 +181,11 @@ class HandwritingSystem:
                     second_g00_idx = i
                     break
         
-        # Build line list without the anchor path
         filtered_lines = []
         for i, line in enumerate(lines):
             if first_g00_idx is not None and second_g00_idx is not None:
                 if first_g00_idx <= i < second_g00_idx:
-                    continue  # Skip the anchor path
+                    continue
             filtered_lines.append(line)
         
         # --- Step 2: Normalize coordinates to (0, 0) origin ---
@@ -202,7 +202,6 @@ class HandwritingSystem:
                         min_y = v
         
         if min_x == float('inf') or min_y == float('inf'):
-            # No moves found - just write what we have
             with open(gcode_path, 'w') as f:
                 f.writelines(filtered_lines)
             return
@@ -214,16 +213,50 @@ class HandwritingSystem:
             axis = match.group(1)
             val = float(match.group(2))
             if axis == 'X':
-                return f'X{val - offset_x:.4f}'
+                new_val = (val - offset_x) / scale_divider
+                return f'X{new_val:.4f}'
             elif axis == 'Y':
-                return f'Y{val - offset_y:.4f}'
+                new_val = (val - offset_y) / scale_divider
+                return f'Y{new_val:.4f}'
             return match.group(0)
         
+        # --- Step 3 & 4: Inject Z commands and apply scaling/offsets ---
+        # Configure your machine's Z-axis UP and DOWN commands here:
+        PEN_UP = "G00 Z5.0000"
+        PEN_DOWN = "G01 Z0.0000"
+        
         normalized_lines = []
+        is_pen_down = False
+        first_move_done = False
+        
         for line in filtered_lines:
-            if line.strip().upper().startswith('G0') or line.strip().upper().startswith('G1'):
+            stripped = line.strip().upper()
+            if stripped.startswith('G00') or stripped.startswith('G0 '):
+                # Rapid move - pen MUST be UP
+                if is_pen_down or not first_move_done:
+                    normalized_lines.append(PEN_UP + "\n")
+                    is_pen_down = False
+                    first_move_done = True
+                
                 line = coord_pattern.sub(shift_coord, line)
-            normalized_lines.append(line)
+                normalized_lines.append(line)
+                
+            elif stripped.startswith('G01') or stripped.startswith('G1 '):
+                # Drawing move - pen MUST be DOWN
+                if not is_pen_down:
+                    normalized_lines.append(PEN_DOWN + "\n")
+                    is_pen_down = True
+                    first_move_done = True
+                    
+                line = coord_pattern.sub(shift_coord, line)
+                normalized_lines.append(line)
+                
+            else:
+                normalized_lines.append(line)
+        
+        # Always end with the pen up
+        if is_pen_down:
+            normalized_lines.append(PEN_UP + "\n")
         
         with open(gcode_path, 'w') as f:
             f.writelines(normalized_lines)
