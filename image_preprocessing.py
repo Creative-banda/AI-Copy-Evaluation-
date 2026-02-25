@@ -35,7 +35,7 @@ def preprocess_for_ocr(
     deskew: bool = True,
     resize_to: Optional[Tuple[int, int]] = None,
     debug: bool = False
-) -> np.ndarray:
+    ) -> np.ndarray:
     """
     Preprocess image for optimal OCR accuracy
     
@@ -223,7 +223,7 @@ def batch_preprocess(
     output_folder: Union[str, Path],
     pattern: str = "*.png",
     **kwargs
-) -> int:
+    ) -> int:
     """
     Preprocess all images in a folder
     

@@ -632,22 +632,22 @@ def main():
         description="Document Capture & OCR Grading System",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # Start camera capture system
-  python main.py camera
-  
-  # Find text in image with PaddleOCR
-  python main.py ocr images/worksheet.png "Question 1" --engine paddle
-  
-  # Grade worksheet
-  python main.py grade images/test.png --qa "Q1" "Answer1" --qa "Q2" "Answer2"
-  
-  # Batch process folder
-  python main.py batch images/ "student name" --engine tesseract
-  
-  # Preprocess image
-  python main.py preprocess images/scan.png --method aggressive
-        """
+    Examples:
+    # Start camera capture system
+    python main.py camera
+    
+    # Find text in image with PaddleOCR
+    python main.py ocr images/worksheet.png "Question 1" --engine paddle
+    
+    # Grade worksheet
+    python main.py grade images/test.png --qa "Q1" "Answer1" --qa "Q2" "Answer2"
+    
+    # Batch process folder
+    python main.py batch images/ "student name" --engine tesseract
+    
+    # Preprocess image
+    python main.py preprocess images/scan.png --method aggressive
+            """
     )
     
     subparsers = parser.add_subparsers(dest='mode', help='Operation mode')

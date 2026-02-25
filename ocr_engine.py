@@ -50,7 +50,7 @@ def preprocess_image(
     image: Union[str, np.ndarray],
     method: str = "light",
     save_path: Optional[str] = None
-) -> np.ndarray:
+    ) -> np.ndarray:
     """
     Preprocess image for optimal OCR accuracy
     
@@ -136,7 +136,7 @@ def find_text_with_paddle(
     search_text: str,
     preprocess: bool = True,
     min_confidence: float = 0.5
-) -> List[WordBox]:
+    ) -> List[WordBox]:
     """
     Find text using PaddleOCR with optional preprocessing
     
@@ -312,7 +312,7 @@ def find_text_with_tesseract(
     search_text: str,
     preprocess: bool = True,
     exact_match: bool = False
-) -> List[WordBox]:
+    ) -> List[WordBox]:
     """
     Find text using Tesseract OCR with optional preprocessing
     
@@ -408,7 +408,7 @@ def evaluate_with_gpt(
     api_key: Optional[str] = None,
     model: str = "gpt-4o-mini",
     preprocess: bool = True
-) -> Dict[str, Any]:
+    ) -> Dict[str, Any]:
     """
     Evaluate worksheet using OpenAI GPT Vision API
     
@@ -454,101 +454,86 @@ def evaluate_with_gpt(
             ])
             prompt = f"""Analyze this worksheet and evaluate answers.
 
-Questions and expected answers:
-{qa_text}
+                Questions and expected answers:
+                {qa_text}
 
-For each question provide:
-1. Student's answer (text in image)
-2. Whether correct (true/false)
+                For each question provide:
+                1. Student's answer (text in image)
+                2. Whether correct (true/false)
 
-Respond in JSON:
-{{
-    "q1": {{
-        "question": "...",
-        "isAnswerCorrect": true
-    }},
-    ...
-}}"""
+                Respond in JSON:
+                {{
+                    "q1": {{
+                        "question": "...",
+                        "isAnswerCorrect": true
+                    }},
+                    ...
+                }}"""
         else:
             prompt = """
-You are a STRICT mathematics examiner evaluating a scanned worksheet image.
-
-Your job is to detect questions, read student answers, compute the correct
-mathematical result, and compare them.
-
-------------------------------------------------
-IMAGE ANALYSIS RULES
-------------------------------------------------
-1. Detect each question and its answer.
-2. Questions are printed text beginning with Q1, Q2, etc.
-3. The answer belongs to the nearest question ABOVE it.
-4. Any text between one question and the next belongs to that question.
-5. Separator lines or spacing do NOT break association.
-
-------------------------------------------------
-QUESTION TEXT RULES
-------------------------------------------------
-- Copy EXACT words from the START of each question.
-- Maximum 5 words.
-- Stop before punctuation (?, :, .).
-- Do NOT rewrite or summarize.
-- Each question label must be unique.
-
-------------------------------------------------
-ANSWER DETECTION RULES
-------------------------------------------------
-For every question:
-- Extract exactly what the student wrote.
-- Preserve math symbols if visible.
-- If multiple lines exist, combine into one line.
-
-------------------------------------------------
-MATH EVALUATION RULES (CRITICAL)
-------------------------------------------------
-You MUST solve the math problem yourself.
-
-DO NOT compare strings directly.
-
-Normalize equivalents:
-×, x, * → multiplication
-½, 1/2 → same value
-Ignore spacing differences.
-
-Procedure:
-1. Understand the math question.
-2. Compute the correct answer.
-3. Compare with detected student answer.
-
-If mathematically equal → true
-Otherwise → false
-
-Example:
-7 × 9 = 63 → correct
-Area = bh/2 → correct form
-2 × (8 + 5) = 26 → correct
-
-Never mark a mathematically correct answer as false.
-
-------------------------------------------------
-OUTPUT FORMAT (STRICT JSON ONLY)
-------------------------------------------------
-Return ONLY valid JSON.
-
-For each question return:
-
-{
- "q1":{
-   "question":"...",
-   "detectedAnswer":"what you read from image",
-   "expectedAnswer":"correct mathematical answer",
-   "isAnswerCorrect":true
- }
-}
-
-No explanations.
-No markdown.
-No extra text.
-"""
+                You are a STRICT mathematics examiner evaluating a scanned worksheet image.
+                Your job is to detect questions, read student answers, compute the correct
+                mathematical result, and compare them.
+                ------------------------------------------------
+                IMAGE ANALYSIS RULES
+                ------------------------------------------------
+                1. Detect each question and its answer.
+                2. Questions are printed text beginning with Q1, Q2, etc.
+                3. The answer belongs to the nearest question ABOVE it.
+                4. Any text between one question and the next belongs to that question.
+                5. Separator lines or spacing do NOT break association.
+                ------------------------------------------------
+                QUESTION TEXT RULES
+                ------------------------------------------------
+                - Copy EXACT words from the START of each question.
+                - Maximum 5 words.
+                - Stop before punctuation (?, :, .).
+                - Do NOT rewrite or summarize.
+                - Each question label must be unique.
+                ------------------------------------------------
+                ANSWER DETECTION RULES
+                ------------------------------------------------
+                For every question:
+                - Extract exactly what the student wrote.
+                - Preserve math symbols if visible.
+                - If multiple lines exist, combine into one line.
+                ------------------------------------------------
+                MATH EVALUATION RULES (CRITICAL)
+                ------------------------------------------------
+                You MUST solve the math problem yourself.
+                DO NOT compare strings directly.
+                Normalize equivalents:
+                ×, x, * → multiplication
+                ½, 1/2 → same value
+                Ignore spacing differences.
+                Procedure:
+                1. Understand the math question.    
+                2. Compute the correct answer.
+                3. Compare with detected student answer.
+                If mathematically equal → true
+                Otherwise → false
+                Example:
+                7 × 9 = 63 → correct
+                Area = bh/2 → correct form
+                2 × (8 + 5) = 26 → correct
+                Never mark a mathematically correct answer as false.
+                ------------------------------------------------
+                OUTPUT FORMAT (STRICT JSON ONLY)
+                ------------------------------------------------
+                Return ONLY valid JSON.
+                For each question return:
+                {
+                "q1":{
+                "question":"...",
+                "detectedAnswer":"what you read from image",
+                "expectedAnswer":"correct mathematical answer",
+                "isAnswerCorrect":true
+                }
+                }
+                No explanations.
+                No markdown.
+                No extra text.
+                """
 
         
         # Call API
@@ -613,7 +598,7 @@ def draw_boxes_on_image(
     color: Tuple[int, int, int] = (0, 255, 0),
     thickness: int = 2,
     show_text: bool = True
-) -> str:
+    ) -> str:
     """
     Draw bounding boxes on image
     
@@ -663,7 +648,7 @@ def locate_and_annotate(
     image_path: str,
     gpt_response: Dict[str, Any],
     output_path: Optional[str] = None
-) -> Tuple[str, List[Dict[str, Any]]]:
+    ) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Locate questions using OCR and annotate with Correct/Wrong based on GPT result.
     

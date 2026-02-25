@@ -543,7 +543,7 @@ def start_camera_system(
     camera2_id: int = 1,
     output_folder: str = "captured_copies",
     on_capture: Optional[Callable[[Dict[str, str]], None]] = None
-) -> None:
+    ) -> None:
     """
     Start dual camera document capture system
     
