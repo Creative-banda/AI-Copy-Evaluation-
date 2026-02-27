@@ -220,9 +220,9 @@ class HandwritingSystem:
                 return f'Y{new_val:.4f}'
             return match.group(0)
         
-        # grbl-servo firmware: S0 = pen DOWN (min angle), S1000 = pen UP (max angle)
-        PEN_UP = "S1000"  # Servo at max position (pen lifted)
-        PEN_DOWN = "S0"   # Servo at min position (pen on paper)
+        # grbl-servo firmware: M3 S0 = pen DOWN (min), M3 S1000 = pen UP (max)
+        PEN_UP = "M3 S1000"  # Servo at max position (pen lifted)
+        PEN_DOWN = "M3 S0"   # Servo at min position (pen on paper)
         
         normalized_lines = []
         is_pen_down = False
