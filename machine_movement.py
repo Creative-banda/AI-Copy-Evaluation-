@@ -67,86 +67,103 @@ def wait_for_idle(s: serial.Serial, timeout: float = 60.0):
     return False
 
 
-def main():
-    # --- Load G-Code from file ---
-    if not os.path.exists(GCODE_FILE):
-        print(f"ERROR: G-Code file not found: {GCODE_FILE}")
-        print("Run 'python standalone_gcode_test.py' first to generate the G-code.")
-        return
+def run_gcode(gcode_path: str) -> bool:
+    """
+    Reusable machine execution function.
+    Connects to GRBL, sends all G-code lines and waits for completion.
+    Returns True if all lines sent successfully, False on error.
+    Can be imported and called from automated_grading.py
+    """
+    import re
+    coord_re = re.compile(r'([XY])(-?[\d.]+)')
 
-    with open(GCODE_FILE, 'r') as f:
+    if not os.path.exists(gcode_path):
+        print(f"[Machine] ERROR: G-Code file not found: {gcode_path}")
+        return False
+
+    with open(gcode_path, 'r') as f:
         raw_gcode = f.read()
 
     lines = [l.strip() for l in raw_gcode.strip().split("\n")
              if l.strip() and not l.strip().startswith(";")]
 
-    print(f"Loaded {len(lines)} G-code lines from: {GCODE_FILE}")
+    print(f"[Machine] Loaded {len(lines)} G-code lines from: {gcode_path}")
 
     # --- Connect ---
-    print(f"\nConnecting to GRBL on {PORT} @ {BAUD}...")
+    print(f"[Machine] Connecting to GRBL on {PORT} @ {BAUD}...")
     try:
         s = serial.Serial(PORT, BAUD, timeout=5)
     except serial.SerialException as e:
-        print(f"ERROR: Cannot open {PORT}: {e}")
-        return
-    time.sleep(2)
+        print(f"[Machine] ERROR: Cannot open {PORT}: {e}")
+        return False
 
-    # --- Step 1: Wake up GRBL ---
-    print("\n[1] Waking up GRBL...")
-    s.write(b"\r\n\r\n")
-    time.sleep(1.5)
-    s.flushInput()
+    try:
+        time.sleep(2)
 
-    # --- Step 1b: Clear Alarm Lock ---
-    print("\n[1b] Clearing Alarm Lock ($X)...")
-    send_and_wait(s, "$X")
+        # Step 1: Wake up GRBL
+        print("[Machine] Waking up GRBL...")
+        s.write(b"\r\n\r\n")
+        time.sleep(1.5)
+        s.flushInput()
 
-    # --- Step 2: Pen UP, move to home (0,0), then wait ---
-    print("\n[2] Pen UP then moving to Home (G00 X0 Y0)...")
-    send_and_wait(s, "M3 S1000")     # Pen UP first - don't drag on the way home
-    send_and_wait(s, "G90")           # Absolute positioning mode
-    send_and_wait(s, "G00 X0 Y0")    # Move to origin (0,0)
-    send_and_wait(s, "G4 P3")         # Dwell 3s - wait for machine to physically reach home
-    send_and_wait(s, f"F{FEED_RATE}")
-    print("  -> Machine is at Home/Origin. Starting drawing.")
+        # Step 1b: Clear Alarm Lock
+        print("[Machine] Clearing Alarm Lock ($X)...")
+        send_and_wait(s, "$X")
 
-    # --- Step 3: Send G-code line by line ---
-    import re
-    coord_re = re.compile(r'([XY])(-?[\d.]+)')
-    print(f"\n[3] Sending {len(lines)} G-code lines...")
-    drawing_done = False
-    for i, line in enumerate(lines, 1):
-        if line.upper() in ("M2", "M30"):
-            print(f"\n  [{i}/{len(lines)}] End of Program ({line}). Finishing up.")
-            drawing_done = True
-            break
+        # Step 2: Pen UP, set feed rate
+        print("[Machine] Pen UP, setting feed rate...")
+        send_and_wait(s, "M3 S1000")          # Pen UP first
+        send_and_wait(s, f"F{FEED_RATE}")
 
-        # Safety: skip any move that would exceed machine physical limits
-        coords = {axis: float(val) for axis, val in coord_re.findall(line)}
-        if coords.get('X', 0) > MAX_X_MM or coords.get('Y', 0) > MAX_Y_MM:
-            print(f"  !! SKIP line {i} (would exceed limits: {coords}) - {line.strip()}")
-            continue
+        # Step 3: Send G-code line by line
+        print(f"[Machine] Sending {len(lines)} G-code lines...")
+        success = True
+        for i, line in enumerate(lines, 1):
+            if line.upper() in ("M2", "M30"):
+                print(f"[Machine] End of program at line {i}.")
+                break
 
-        result = send_and_wait(s, line)
-        if "error" in result.lower() or result == "timeout":
-            print(f"\n  !! Stopping at line {i} due to: {result}")
-            break
+            # Safety: skip moves that exceed machine physical limits
+            coords = {axis: float(val) for axis, val in coord_re.findall(line)}
+            if coords.get('X', 0) > MAX_X_MM or coords.get('Y', 0) > MAX_Y_MM:
+                print(f"[Machine] SKIP line {i} (exceeds limits: {coords})")
+                continue
 
-    # --- Step 4: Pen UP, return to Origin, signal done ---
-    print("\n[4] Drawing complete. Lifting pen and returning to Origin...")
-    send_and_wait(s, "M3 S1000")      # Pen UP
-    send_and_wait(s, "G00 X0 Y0")    # Return to origin
-    send_and_wait(s, "G4 P2")         # Dwell 2 seconds - waits inside motion planner until home
+            result = send_and_wait(s, line)
+            if "error" in result.lower() or result == "timeout":
+                print(f"[Machine] !! Stopping at line {i} due to: {result}")
+                success = False
+                break
 
-    # Send M30 as the "done" signal (hardware person can read this)
-    send_and_wait(s, "M30")
+        # Step 4: Final pen UP and return to origin
+        print("[Machine] Drawing complete. Pen UP + return to origin...")
+        send_and_wait(s, "M3 S1000")
+        send_and_wait(s, "G00 X0 Y0")
+        send_and_wait(s, "G4 P2")
 
-    print("\n" + "=" * 50)
-    print("  ✅ MACHINE DONE - All marks have been drawn!")
-    print("=" * 50)
+        # Done signal
+        send_and_wait(s, "M30")
 
-    s.close()
+        if success:
+            print("[Machine] ✅ DONE - All marks drawn successfully!")
+        return success
+
+    except Exception as e:
+        print(f"[Machine] !! Unexpected error: {e}")
+        return False
+    finally:
+        try:
+            s.close()
+            print("[Machine] Port closed.")
+        except Exception:
+            pass
+
+
+def main():
+    """Standalone entry point - runs G-code from default GCODE_FILE."""
+    run_gcode(GCODE_FILE)
 
 
 if __name__ == "__main__":
     main()
+

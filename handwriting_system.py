@@ -253,9 +253,11 @@ class HandwritingSystem:
             else:
                 normalized_lines.append(line)
         
-        # Always end with the pen up
+        # Always end with: pen UP → return to origin → program end
         if is_pen_down:
             normalized_lines.append(PEN_UP + "\n")
+        normalized_lines.append("G00 X0 Y0\n")   # Return to origin after drawing
+        normalized_lines.append("M2\n")            # End of program
         
         with open(gcode_path, 'w') as f:
             f.writelines(normalized_lines)

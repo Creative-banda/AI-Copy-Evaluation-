@@ -104,10 +104,25 @@ def run_camera_mode(args):
                     
             # 3. GENERATE MERGED G-CODE (Only if ready to flip)
             if ready_to_flip:
+                gcode_path = None
                 try:
-                    generate_merged_output(camera_handlers)
+                    gcode_path = generate_merged_output(camera_handlers)
                 except Exception as e:
                      print(f"[System] Merged Gen Error: {e}")
+
+            # 3b. SEND G-CODE TO MACHINE AND WAIT FOR COMPLETION
+            # Machine draws all marks BEFORE we flip the paper.
+            if ready_to_flip and gcode_path:
+                try:
+                    from machine_movement import run_gcode
+                    print(f"\n[System] Sending G-code to machine: {gcode_path}")
+                    machine_success = run_gcode(gcode_path)
+                    if machine_success:
+                        print("[System] ✅ Machine finished drawing. Proceeding to flip.")
+                    else:
+                        print("[System] ⚠ Machine reported an error. Proceeding to flip anyway.")
+                except Exception as e:
+                    print(f"[System] Machine Error: {e}. Proceeding to flip anyway.")
 
             # 4. TRIGGER FLIP (Only the last finishing thread does this)
             if ready_to_flip:
@@ -314,6 +329,7 @@ def run_camera_mode(args):
                 
                 if gcode_path:
                     print(f"[System] ✓ MERGED G-Code (420x297mm): {gcode_path}")
+                    return gcode_path   # Return path so pipeline can send it to the machine
                     
             except Exception as e:
                 print(f"[System] G-Code Gen Error: {e}")
