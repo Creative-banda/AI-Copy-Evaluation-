@@ -131,17 +131,17 @@ def run_camera_mode(args):
                     
                     # Send Flip
                     print("[System] Sending FLIP signal... (SKIPPED FOR TESTING)")
-                    # if arduino: arduino.send_flip_signal()
+                    if arduino: arduino.send_flip_signal()
                     
                     # Wait for Hardware
                     print("[System] Waiting for hardware... (SKIPPED FOR TESTING)")
                     import time
                     time.sleep(2) # Simulate flip delay
                     
-                    # if arduino and not arduino.wait_for_capture_signal():
-                    #     print("[System] WARNING: Hardware timeout.")
-                    # else:
-                    #     print("[System] Hardware ready.")
+                    if arduino and not arduino.wait_for_capture_signal():
+                        print("[System] WARNING: Hardware timeout.")
+                    else:
+                        print("[System] Hardware ready.")
                         
                     # RESET CYCLE AND RESUME CAMERAS
                     print("[System] Resuming cameras...")
