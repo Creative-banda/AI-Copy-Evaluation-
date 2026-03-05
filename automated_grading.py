@@ -22,6 +22,7 @@ Usage:
 
 import sys
 import os
+import time
 import argparse
 from pathlib import Path
 
@@ -73,7 +74,7 @@ def run_camera_mode(args):
     # Initialize Arduino
     try:
         from hardware_interface import ArduinoController
-        arduino = ArduinoController(port="COM3", baud_rate=115200) # Updated to COM3
+        arduino = ArduinoController(port="COM10", baud_rate=115200) # Updated to COM10
     except Exception as e:
         print(f"[System] WARNING: Hardware connection failed: {e}")
         print("[System] Running in SIMULATION MODE (No Hardware)")
@@ -98,10 +99,15 @@ def run_camera_mode(args):
             with processing_lock:
                 processed_cameras.add(camera_name)
                 # Check if we have both cameras (cam1 and cam2)
-                # We assume 2 cameras are active
                 if len(processed_cameras) >= 2:
                     ready_to_flip = True
-                    
+
+            # 2b. SEND UP SIGNAL immediately when both cameras are done.
+            # Hardware will do its work while G-code is being generated in parallel.
+            if ready_to_flip and arduino:
+                arduino.send_up_signal()
+                print("[System] UP signal sent. Hardware working in parallel with G-code generation...")
+
             # 3. GENERATE MERGED G-CODE (Only if ready to flip)
             if ready_to_flip:
                 gcode_path = None
@@ -111,7 +117,7 @@ def run_camera_mode(args):
                      print(f"[System] Merged Gen Error: {e}")
 
             # 3b. SEND G-CODE TO MACHINE AND WAIT FOR COMPLETION
-            # Machine draws all marks BEFORE we flip the paper.
+            # UP was already sent above. Machine draws all marks BEFORE flip.
             if ready_to_flip and gcode_path:
                 try:
                     from machine_movement import run_gcode
@@ -123,6 +129,8 @@ def run_camera_mode(args):
                         print("[System] ⚠ Machine reported an error. Proceeding to flip anyway.")
                 except Exception as e:
                     print(f"[System] Machine Error: {e}. Proceeding to flip anyway.")
+            elif ready_to_flip and not gcode_path:
+                print("[System] ⚠ MACHINE STEP SKIPPED - gcode_path is None (see logs above for reason).")
 
             # 4. TRIGGER FLIP (Only the last finishing thread does this)
             if ready_to_flip:
@@ -135,7 +143,6 @@ def run_camera_mode(args):
                     
                     # Wait for Hardware
                     print("[System] Waiting for hardware... (SKIPPED FOR TESTING)")
-                    import time
                     time.sleep(2) # Simulate flip delay
                     
                     if arduino and not arduino.wait_for_capture_signal():
@@ -242,13 +249,15 @@ def run_camera_mode(args):
         
         # Need cam1 and cam2 data
         if 'cam1' not in handlers or 'cam2' not in handlers:
-            print("[System] Error: Missing camera data for merge.")
-            return
+            print(f"[System] ⚠ Cannot merge: missing camera data. Have: {list(handlers.keys())}")
+            return None
 
         # Load timestamps to creating unique filename
         # Use cam1's timestamp/filename as base
         cam1_path = handlers['cam1'].get('ocr_path')
-        if not cam1_path: return
+        if not cam1_path:
+            print("[System] ⚠ Cannot merge: cam1 ocr_path is missing.")
+            return None
         
         base_name = os.path.basename(cam1_path).replace('cam1_', 'merged_').replace('.png', '')
         output_dir = "handwriting_output"
@@ -298,6 +307,7 @@ def run_camera_mode(args):
                 merged_annotations.append(new_ann)
                 
         # 3. Generate Single SVG & G-Code
+        print(f"[System] Total merged annotations: {len(merged_annotations)} (cam1={len(anns1 or [])}, cam2={len(anns2 or [])})")
         if merged_annotations:
             try:
                 # Calculate scores
@@ -330,9 +340,18 @@ def run_camera_mode(args):
                 if gcode_path:
                     print(f"[System] ✓ MERGED G-Code (420x297mm): {gcode_path}")
                     return gcode_path   # Return path so pipeline can send it to the machine
+                else:
+                    print("[System] ⚠ convert_to_gcode() returned None (vpype may have failed).")
+                    return None
                     
             except Exception as e:
+                import traceback
                 print(f"[System] G-Code Gen Error: {e}")
+                traceback.print_exc()
+                return None
+        else:
+            print("[System] ⚠ No annotations found on either page - skipping G-code generation.")
+            return None
 
 
     try:

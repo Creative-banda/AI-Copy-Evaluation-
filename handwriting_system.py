@@ -98,16 +98,16 @@ class HandwritingSystem:
                 dwg.add(dwg.line((x-half, y+half), (x+half, y-half), stroke="red", stroke_width=10))
 
         # Draw Feedback Text (Score)
-        if feedback_text:
-            # Position at top right (e.g., 70% width, 10% height) - Moved left to prevent clipping
-            score_x = int(source_width * 0.70) 
-            score_y = int(source_height * 0.10)
-            self._draw_vector_text(dwg, score_x, score_y, feedback_text, size=150)
+        # if feedback_text:
+        #     # Position at top right (e.g., 70% width, 10% height) - Moved left to prevent clipping
+        #     score_x = int(source_width * 0.70) 
+        #     score_y = int(source_height * 0.10)
+        #     self._draw_vector_text(dwg, score_x, score_y, feedback_text, size=150)
 
         dwg.save()
         return filepath
 
-    def convert_to_gcode(self, svg_path: str, target_width_mm: int = 210, target_height_mm: int = 297, scale_divider: float = 3.0) -> Optional[str]:
+    def convert_to_gcode(self, svg_path: str, target_width_mm: int = 210, target_height_mm: int = 297, scale_divider: float = 2.7) -> Optional[str]:
         """
         Converts SVG to G-Code using vpype.
         Returns the path to the generated gcode file.
@@ -154,7 +154,7 @@ class HandwritingSystem:
                 print(f"[Handwriting] vpype stderr: {e.stderr.decode()}")
             return None
 
-    def _normalize_gcode(self, gcode_path: str, scale_divider: float = 3.0):
+    def _normalize_gcode(self, gcode_path: str, scale_divider: float = 2.7):
         """
         Post-processes a G-code file to:
         1. STRIP the first connected path (anchor rect/dots - not real marks)
@@ -213,10 +213,10 @@ class HandwritingSystem:
             axis = match.group(1)
             val = float(match.group(2))
             if axis == 'X':
-                new_val = (val - offset_x) / scale_divider
+                new_val = (val - offset_x) / 3.4
                 return f'X{new_val:.4f}'
             elif axis == 'Y':
-                new_val = (val - offset_y) / scale_divider
+                new_val = (val - offset_y) / 3.6
                 return f'Y{new_val:.4f}'
             return match.group(0)
         

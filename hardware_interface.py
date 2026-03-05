@@ -52,6 +52,18 @@ class ArduinoController:
         except Exception as e:
             print(f"[Hardware] ERROR sending flip signal: {e}")
 
+    def send_up_signal(self):
+        """Send 'up' command to Arduino (raises pen/mechanism before drawing)"""
+        if not self.connection:
+            return
+            
+        try:
+            command = "up\n"
+            self.connection.write(command.encode('utf-8'))
+            print("[Hardware] Sent 'up' signal")
+        except Exception as e:
+            print(f"[Hardware] ERROR sending up signal: {e}")
+
     def wait_for_capture_signal(self) -> bool:
         """
         Block and wait for 'capture' command from Arduino.
