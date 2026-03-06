@@ -1,92 +1,80 @@
 """
 test_box_detection_live.py
 --------------------------
-Real-time live camera test for black-bordered box detection.
-Point the camera at the question paper to see detected boxes highlighted in green.
+Test black-bordered box detection on a single image.
 
-Controls:
+Usage:
+    python test_box_detection_live.py <image_path>
+    python test_box_detection_live.py captured_copies/cam1_xxx/original_gray.png
+
+Controls (while window is open):
     Q / ESC  - Quit
-    +/-      - Increase/decrease min box size
-    [/]      - Increase/decrease max box size
-    D        - Toggle debug print in terminal
+    S        - Save annotated image
 """
 
+import sys
 import cv2
 from box_detector import detect_marking_boxes, draw_detected_boxes
 
 # ── Config ────────────────────────────────────────────────────────────────────
-CAMERA_ID   = 0     # Change to 1 or 2 if needed for your camera
-MIN_SIZE    = 30    # Min box side length in pixels  (press +/- to tune live)
-MAX_SIZE    = 300   # Max box side length in pixels  (press [/] to tune live)
+MIN_SIZE = 60    # Min box side length in pixels — increase if detecting noise/shadows
+MAX_SIZE = 300   # Max box side length in pixels
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def main():
-    global MIN_SIZE, MAX_SIZE
+    if len(sys.argv) < 2:
+        print("Usage: python test_box_detection_live.py <image_path>")
+        print("Example: python test_box_detection_live.py captured_copies/cam1_xxx/original_gray.png")
+        sys.exit(1)
 
-    cap = cv2.VideoCapture(CAMERA_ID)
-    if not cap.isOpened():
-        print(f"ERROR: Cannot open camera {CAMERA_ID}")
-        return
+    image_path = sys.argv[1]
+    image = cv2.imread(image_path)
+    if image is None:
+        print(f"ERROR: Cannot load image: {image_path}")
+        sys.exit(1)
 
-    print("=== Live Box Detection ===")
-    print("  Q / ESC  → Quit")
-    print("  +/-      → Min size ±5px")
-    print("  [/]      → Max size ±10px")
-    print("  D        → Toggle debug output")
-    print()
+    print(f"Loaded: {image_path}  ({image.shape[1]}x{image.shape[0]}px)")
 
-    debug = False
+    # Detect boxes
+    boxes = detect_marking_boxes(
+        image,
+        min_size=MIN_SIZE,
+        max_size=MAX_SIZE,
+        approx_square=True,
+        debug=True
+    )
+
+    print(f"\nDetected {len(boxes)} marking box(es):")
+    for i, b in enumerate(boxes):
+        print(f"  #{i+1}  x={b['x']} y={b['y']} w={b['w']} h={b['h']}  center=({b['cx']}, {b['cy']})")
+
+    # Draw overlay
+    annotated = draw_detected_boxes(image, boxes)
+
+    # Save annotated image alongside original
+    save_path = image_path.rsplit('.', 1)[0] + "_boxes_detected.png"
+    cv2.imwrite(save_path, annotated)
+    print(f"\nSaved annotated image: {save_path}")
+
+    # Resize for display if image is very large
+    display = annotated
+    h, w = annotated.shape[:2]
+    if w > 1280:
+        scale = 1280 / w
+        display = cv2.resize(annotated, (1280, int(h * scale)))
+
+    cv2.imshow("Box Detection (Q to quit, S to save)", display)
+    print("Press Q/ESC to close window.")
 
     while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("ERROR: Cannot read from camera.")
+        key = cv2.waitKey(0) & 0xFF
+        if key in (ord('q'), 27):
             break
 
-        # Detect boxes
-        boxes = detect_marking_boxes(
-            frame,
-            min_size=MIN_SIZE,
-            max_size=MAX_SIZE,
-            approx_square=True,
-            debug=debug
-        )
-
-        # Draw overlay
-        display = draw_detected_boxes(frame, boxes)
-
-        # Show current thresholds in corner
-        cv2.putText(display,
-                    f"min={MIN_SIZE}px  max={MAX_SIZE}px  boxes={len(boxes)}",
-                    (10, display.shape[0] - 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1)
-
-        cv2.imshow("Box Detection (Q to quit)", display)
-
-        key = cv2.waitKey(1) & 0xFF
-        if key in (ord('q'), 27):   # Q or ESC
-            break
-        elif key == ord('+') or key == ord('='):
-            MIN_SIZE = min(MIN_SIZE + 5, MAX_SIZE - 10)
-            print(f"min_size → {MIN_SIZE}")
-        elif key == ord('-'):
-            MIN_SIZE = max(5, MIN_SIZE - 5)
-            print(f"min_size → {MIN_SIZE}")
-        elif key == ord(']'):
-            MAX_SIZE = min(MAX_SIZE + 10, 2000)
-            print(f"max_size → {MAX_SIZE}")
-        elif key == ord('['):
-            MAX_SIZE = max(MIN_SIZE + 10, MAX_SIZE - 10)
-            print(f"max_size → {MAX_SIZE}")
-        elif key == ord('d'):
-            debug = not debug
-            print(f"debug → {debug}")
-
-    cap.release()
     cv2.destroyAllWindows()
-    print("Done.")
 
 
 if __name__ == "__main__":
     main()
+
