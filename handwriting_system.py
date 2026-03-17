@@ -122,13 +122,23 @@ class HandwritingSystem:
             # 3. linemerge
             # 4. gwrite
             
+            import sys
+            import os
+            import shutil
+            
+            # Find vpype executable regardless of platform/extensions
+            vpype_exe = shutil.which("vpype")
+            if not vpype_exe:
+                # Fallback to current python env Scripts directory (.exe for Windows)
+                vpype_exe = os.path.join(os.path.dirname(sys.executable), "vpype" + (".exe" if os.name == "nt" else ""))
+            
             # Using 'scaleto' with target dimensions + explicit layout alignment
             dim_str_w = f"{target_width_mm}mm"
             dim_str_h = f"{target_height_mm}mm"
             layout_dim = f"{target_width_mm}mmx{target_height_mm}mm"
             
             cmd = [
-                "vpype",
+                vpype_exe,
                 "read", svg_path,
                 # Fit the content into the target physical size
                 "scaleto", dim_str_w, dim_str_h,

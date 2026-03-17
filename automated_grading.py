@@ -138,12 +138,12 @@ def run_camera_mode(args):
                     print(f"\n[System] All cameras ({processed_cameras}) processed. Syncing...")
                     
                     # Send Flip
-                    print("[System] Sending FLIP signal... (SKIPPED FOR TESTING)")
+                    print("[System] Sending FLIP signal...")
                     if arduino: arduino.send_flip_signal()
                     
                     # Wait for Hardware
-                    print("[System] Waiting for hardware... (SKIPPED FOR TESTING)")
-                    time.sleep(2) # Simulate flip delay
+                    print("[System] Waiting for hardware...")
+                    # time.sleep(2) # Simulate flip delay
                     
                     if arduino and not arduino.wait_for_capture_signal():
                         print("[System] WARNING: Hardware timeout.")
