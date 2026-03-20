@@ -137,7 +137,7 @@ def run_gcode(gcode_path: str) -> bool:
 
         # Step 4: Final pen UP and return to origin
         print("[Machine] Drawing complete. Pen UP + return to origin...")
-        send_and_wait(s, "M3 S1000")
+        send_and_wait(s, "M3 S0")
         send_and_wait(s, "G00 X0 Y0")
         send_and_wait(s, "G4 P2")
 

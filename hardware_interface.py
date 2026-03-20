@@ -11,7 +11,7 @@ class ArduinoController:
         - Arduino sends: "capture" (confirms action complete, ready for next capture)
     """
     
-    def __init__(self, port: str = "COM4", baud_rate: int = 9600, timeout: int = 30):
+    def __init__(self, port: str = "COM10", baud_rate: int = 9600, timeout: int = 30):
         """
         Initialize Serial Connection
         
@@ -107,7 +107,7 @@ class ArduinoController:
 if __name__ == "__main__":
     # Simple test
     try:
-        controller = ArduinoController("COM4")
+        controller = ArduinoController("COM3")
         controller.send_flip_signal()
         if controller.wait_for_capture_signal():
             print("Test Success!")
